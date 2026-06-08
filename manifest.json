@@ -5,8 +5,6 @@
   "version": "1.0.0",
   "description": "Bridges local hardware serial NMEA streams directly into the browser Geolocation API.",
   "permissions": [
-    "serial",
-    "storage",
     "offscreen"
   ],
   "host_permissions": [
