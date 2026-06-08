@@ -1,0 +1,37 @@
+name: Build and Release CRX
+
+on:
+  push:
+    branches: [ "main" ]
+  release:
+    types: [published]
+
+jobs:
+  build-crx:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Create Build Directory
+        run: mkdir -p build
+
+      - name: Inject Private Key
+        run: echo "${{ secrets.CRX_PRIVATE_KEY }}" > private_key.pem
+
+      - name: Pack Extension (CRX3)
+        run: npx crx3 ./ -p private_key.pem -o build/extension.crx -z build/extension.zip
+
+      - name: Secure Cleanup
+        run: rm private_key.pem
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chrome-Extension-Builds
+          path: build/*
