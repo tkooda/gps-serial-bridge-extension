@@ -1,26 +1,25 @@
 {
   "manifest_version": 3,
-  "name": "gps-serial-bridge",
-  "short_name": "gps-serial-bridge",
-  "version": "1.0.0",
-  "description": "Bridges local hardware serial NMEA streams directly into the browser Geolocation API.",
+  "name": "GPS Serial Bridge",
+  "version": "1.0",
+  "description": "Bridges local hardware serial NMEA data streams directly into the browser Geolocation API.",
   "permissions": [
+    "storage",
     "offscreen"
   ],
-  "host_permissions": [
-    "<all_urls>"
-  ],
-  "background": {
-    "service_worker": "background.js"
-  },
   "action": {
     "default_popup": "popup.html"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content-bridge.js"],
-      "run_at": "document_start"
-    }
-  ]
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icons/icon128.png",
+    "48": "icons/icon128.png",
+    "128": "icons/icon128.png"
+  }
 }

@@ -1,15 +1,17 @@
-document.getElementById('connect').addEventListener('click', async () => {
-  try {
-    await navigator.serial.requestPort();
-    document.getElementById('status').innerText = "Port authorized.\nConnecting...";
-    chrome.runtime.sendMessage({ type: 'PORT_AUTHORIZED' });
-  } catch (err) {
-    document.getElementById('status').innerText = `Error: ${err.message}`;
+async function updateStatus() {
+  const statusEl = document.getElementById('status');
+  const ports = await navigator.serial.getPorts();
+  
+  if (ports.length > 0) {
+    const info = ports[0].getInfo();
+    const vid = info.usbVendorId ? info.usbVendorId.toString(16).toUpperCase().padStart(4, '0') : '????';
+    const pid = info.usbProductId ? info.usbProductId.toString(16).toUpperCase().padStart(4, '0') : '????';
+    statusEl.className = 'success';
+    statusEl.innerText = `USB serial device selected: VID 0x${vid} / PID 0x${pid}`;
+  } else {
+    statusEl.className = 'error';
+    statusEl.innerText = "USB serial device not selected.";
   }
-});
+}
 
-chrome.runtime.onMessage.addListener((message) => {
-  if (message.type === 'GPS_PARSED') {
-    document.getElementById('status').innerText = `Active Fix:\nLat: ${message.coords.latitude.toFixed(5)}\nLng: ${message.coords.longitude.toFixed(5)}`;
-  }
-});
+document.addEventListener('DOMContentLoaded', updateStatus);

@@ -1,19 +1,17 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
   <style>
-    body { width: 220px; font-family: system-ui, sans-serif; padding: 10px; margin: 0; }
-    h3 { margin: 0 0 8px 0; font-size: 14px; }
-    button { width: 100%; padding: 6px; font-weight: bold; background: #0066cc; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
-    button:hover { background: #0052a3; }
-    #status { font-size: 11px; color: #444; margin-top: 6px; white-space: pre-line; }
+    body { width: 250px; font-family: sans-serif; padding: 10px; }
+    #status { font-weight: bold; margin-bottom: 10px; }
+    .error { color: red; }
+    .success { color: green; }
   </style>
 </head>
 <body>
-  <h3>gps-serial-bridge</h3>
-  <button id="connect">Authorize Receiver</button>
-  <div id="status">Awaiting hardware lock...</div>
+  <h3>GPS Bridge Status</h3>
+  <div id="status">Checking...</div>
+  <a href="options.html" target="_blank">Open Settings</a>
   <script src="popup.js"></script>
 </body>
 </html>

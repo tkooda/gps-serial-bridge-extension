@@ -79,8 +79,5 @@ function convertToDecimal(nmeaVal, direction) {
   return (direction === 'S' || direction === 'W') ? -decimal : decimal;
 }
 
-chrome.runtime.onMessage.addListener((message) => {
-  if (message.type === 'PORT_AUTHORIZED') autoConnect();
-});
-
+setInterval(autoConnect, 5000); // Poll for connection if not established
 autoConnect();
