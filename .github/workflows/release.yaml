@@ -26,7 +26,8 @@ jobs:
 
       - name: Create ZIP
         run: |
-          zip -r gps-serial-bridge-v${{ env.VERSION }}.zip . -x "*.git*" "node_modules/*" "*.github*"
+          # Zip the current directory contents, excluding git and hidden files
+          zip -r gps-serial-bridge-v${{ env.VERSION }}.zip . -x "*.git*" ".github/*" "node_modules/*"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
