@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GPS Serial Bridge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Bridges local hardware serial NMEA data streams directly into the browser Geolocation API.",
   "permissions": [
     "storage",
