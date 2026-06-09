@@ -1,31 +1,21 @@
-let offscreenCreated = false;
-
-async function setupOffscreen() {
-  if (offscreenCreated) return;
-  const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
-  if (contexts.length > 0) {
-    offscreenCreated = true;
-    return;
-  }
-  await chrome.offscreen.createDocument({
-    url: 'offscreen.html',
-    reasons: ['WORKERS'],
-    justification: 'Maintains background Web Serial port execution loop.'
-  });
-  offscreenCreated = true;
-}
-
-chrome.runtime.onInstalled.addListener(setupOffscreen);
-chrome.runtime.onStartup.addListener(setupOffscreen);
-
-chrome.runtime.onMessage.addListener((message) => {
-  if (message.type === 'GPS_PARSED') {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'NEW_LOCATION') {
     chrome.tabs.query({}, (tabs) => {
-      for (const tab of tabs) {
-        if (tab.id) {
-          chrome.tabs.sendMessage(tab.id, { type: 'GPS_COORDINATES', coords: message.coords }).catch(() => {});
-        }
+      for (let tab of tabs) {
+        chrome.tabs.sendMessage(tab.id, { action: 'UPDATE_LOCATION', data: message.data }).catch(() => {});
       }
     });
   }
 });
+
+async function setupOffscreen() {
+  const existingContexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+  if (existingContexts.length > 0) return;
+  await chrome.offscreen.createDocument({
+    url: 'offscreen.html',
+    reasons: ['WORKERS'],
+    justification: 'Hardware communication'
+  });
+}
+
+setupOffscreen();

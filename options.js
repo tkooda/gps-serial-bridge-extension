@@ -1,180 +1,158 @@
 const authBtn = document.getElementById('auth-btn');
 const statusEl = document.getElementById('status');
-const controlsContainer = document.getElementById('controls-container');
+const controls = document.getElementById('controls-container');
+const parsedDataContainer = document.getElementById('parsed-data-container');
+const dataLogEl = document.getElementById('serial-data-log');
+const latLonEl = document.getElementById('lat-lon');
+const plusCodeEl = document.getElementById('plus-code');
+const coordHeader = document.getElementById('coord-header');
+const copyLatLonBtn = document.getElementById('copy-latlon-btn');
+const copyPlusBtn = document.getElementById('copy-plus-btn');
 const toggleDataBtn = document.getElementById('toggle-data-btn');
 const baudSelect = document.getElementById('baud-rate');
-const dataLogEl = document.getElementById('serial-data-log');
+const cacheSelect = document.getElementById('cache-duration');
 
-let currentPort = null;
-let reader = null;
 let isShowingData = false;
-let keepReading = false;
+let lastLocationData = null;
+let currentDeviceState = 'DISCONNECTED';
 
-// Load saved baud rate from storage, default to 9600
-chrome.storage.local.get(['baudRate'], (result) => {
-  if (result.baudRate) {
-    baudSelect.value = result.baudRate;
+// Standard 10-character Plus Code encoder
+function encodePlusCode(lat, lon) {
+  const ALPHABET = "23456789CFGHJMPQRVWX";
+  let latNorm = Math.max(-90, Math.min(90, lat)) + 90;
+  let lonNorm = lon + 180;
+  const steps = [20, 1, 0.05, 0.0025, 0.000125];
+  let code = "";
+  
+  for (let i = 0; i < 5; i++) {
+    let latDigit = Math.floor(latNorm / steps[i]);
+    let lonDigit = Math.floor(lonNorm / steps[i]);
+    code += ALPHABET[latDigit] + ALPHABET[lonDigit];
+    latNorm -= latDigit * steps[i];
+    lonNorm -= lonDigit * steps[i];
+    if (i === 3) code += "+";
+  }
+  return code;
+}
+
+// Initialize settings
+chrome.storage.local.get(['baudRate', 'cacheDuration'], (res) => {
+  if (res.baudRate) baudSelect.value = res.baudRate;
+  
+  // Set default to 900000 (15 minutes) if no cache duration is stored
+  const defaultCache = "900000";
+  if (res.cacheDuration) {
+    const val = res.cacheDuration.toString();
+    cacheSelect.value = Array.from(cacheSelect.options).some(o => o.value === val) ? val : defaultCache;
   } else {
-    baudSelect.value = "9600";
+    cacheSelect.value = defaultCache;
   }
 });
 
-// Updates the top-level UI based on selected hardware
-async function updateUI() {
-  const ports = await navigator.serial.getPorts();
+function updateAgeTimer() {
+  if (!lastLocationData) return;
+  const ageSecs = Math.floor((Date.now() - lastLocationData.timestamp) / 1000);
   
-  if (ports.length > 0) {
-    currentPort = ports[0];
-    const info = currentPort.getInfo();
-    const vid = info.usbVendorId ? info.usbVendorId.toString(16).toUpperCase().padStart(4, '0') : '????';
-    const pid = info.usbProductId ? info.usbProductId.toString(16).toUpperCase().padStart(4, '0') : '????';
-    
+  if (currentDeviceState === 'STREAMING' && ageSecs < 4) {
+    coordHeader.innerText = "Live GPS coordinates:";
+  } else {
+    coordHeader.innerText = `Last known GPS coordinates (${ageSecs} seconds ago):`;
+  }
+}
+
+setInterval(updateAgeTimer, 1000);
+
+function updateLocationUI(loc) {
+  if (!loc) return;
+  lastLocationData = loc;
+  
+  latLonEl.innerText = `${loc.lat}, ${loc.lon}`;
+  copyLatLonBtn.style.display = 'inline-block';
+  
+  plusCodeEl.innerText = encodePlusCode(parseFloat(loc.lat), parseFloat(loc.lon));
+  copyPlusBtn.style.display = 'inline-block';
+  
+  updateAgeTimer();
+}
+
+function updateUI(state) {
+  currentDeviceState = state;
+  updateAgeTimer(); 
+  
+  controls.style.display = "flex";
+  
+  if (state === 'STREAMING') {
+    statusEl.className = "success"; 
+    statusEl.innerText = "GPS Serial Bridge Active.";
     authBtn.innerText = "Disconnect GPS Serial Device";
-    statusEl.className = "success";
-    statusEl.innerText = `USB serial device selected: VID 0x${vid} / PID 0x${pid}`;
-    controlsContainer.style.display = "flex";
+    toggleDataBtn.style.display = "inline-block";
+    parsedDataContainer.style.display = "block";
   } else {
-    currentPort = null;
-    authBtn.innerText = "Select GPS Serial Device";
-    statusEl.className = "error";
-    statusEl.innerText = "USB serial device not selected.";
-    controlsContainer.style.display = "none";
-    dataLogEl.style.display = "none";
-    isShowingData = false;
-    keepReading = false;
-  }
-}
-
-// Safely close the port and reader
-async function disconnectSerial() {
-  keepReading = false;
-  
-  if (reader) {
-    try {
-      await reader.cancel();
-    } catch (e) {
-      console.log("Reader already cancelled:", e);
-    }
-    reader = null;
-  }
-  
-  if (currentPort) {
-    try {
-      await currentPort.close();
-    } catch (e) {
-      // Ignore the error if the port is already closed
-      console.log("Port already closed:", e);
-    }
-  }
-}
-
-// The Keep-Alive and Data Processing Loop
-async function readSerialData() {
-  if (!currentPort) return;
-
-  try {
-    const baudRate = parseInt(baudSelect.value, 10);
-    
-    if (!currentPort.readable) {
-      await currentPort.open({ baudRate: baudRate });
-    }
-
-    const textDecoder = new TextDecoderStream();
-    currentPort.readable.pipeTo(textDecoder.writable);
-    reader = textDecoder.readable.getReader();
-    keepReading = true;
-
-    while (keepReading) {
-      const { value, done } = await reader.read();
-      
-      if (done) {
-        reader.releaseLock();
-        break;
-      }
-      
-      if (value && isShowingData) {
-        dataLogEl.value += value;
-        dataLogEl.scrollTop = dataLogEl.scrollHeight;
-        
-        if (dataLogEl.value.length > 10000) {
-          dataLogEl.value = dataLogEl.value.substring(dataLogEl.value.length - 5000);
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Serial read error:", error);
-    statusEl.className = "error";
-    statusEl.innerText = "Serial connection lost: " + error.message;
-    await disconnectSerial();
-  }
-}
-
-// Handle Baud Rate changes dynamically
-baudSelect.addEventListener('change', async () => {
-  chrome.storage.local.set({ baudRate: baudSelect.value });
-  
-  // If the port is actively open, restart the connection with the new baud rate
-  if (currentPort && currentPort.readable) {
-    dataLogEl.value += `\n[System] Restarting connection at ${baudSelect.value} baud...\n`;
-    await disconnectSerial();
-    setTimeout(() => {
-      if (isShowingData || toggleDataBtn.innerText === "Hide serial data") {
-         readSerialData();
-      }
-    }, 500);
-  }
-});
-
-// Handle the Show/Hide button logic
-toggleDataBtn.addEventListener('click', async () => {
-  isShowingData = !isShowingData;
-
-  if (isShowingData) {
-    toggleDataBtn.innerText = "Hide serial data";
-    dataLogEl.style.display = "block";
-    
-    if (dataLogEl.value === "") {
-        dataLogEl.value = `Witing for NMEA data at ${baudSelect.value} baud...\n`;
-    }
-
-    if (!reader || !keepReading) {
-      readSerialData();
-    }
-  } else {
-    toggleDataBtn.innerText = "Show serial data";
+    statusEl.className = "error"; 
+    statusEl.innerText = "USB GPS Serial Device disconnected.";
+    authBtn.innerText = "Connect GPS Serial Device";
+    toggleDataBtn.style.display = "none";
+    if (!lastLocationData) parsedDataContainer.style.display = "none";
     dataLogEl.style.display = "none";
   }
-});
+}
 
-// Handle Hardware Authorization / Disconnect
+function handleCopy(btn, textToCopy) {
+  navigator.clipboard.writeText(textToCopy);
+  const oldText = btn.innerText;
+  btn.innerText = "Copied!";
+  setTimeout(() => btn.innerText = oldText, 2000);
+}
+
+copyLatLonBtn.addEventListener('click', () => handleCopy(copyLatLonBtn, latLonEl.innerText));
+copyPlusBtn.addEventListener('click', () => handleCopy(copyPlusBtn, plusCodeEl.innerText));
+
 authBtn.addEventListener('click', async () => {
-  try {
-    if (currentPort) {
-      // User is connected, they want to disconnect
-      await disconnectSerial();
-      
-      // Revoke the browser's permission to use this serial device
-      if (typeof currentPort.forget === 'function') {
-        await currentPort.forget();
-      }
-      currentPort = null;
-    } else {
-      // User is not connected, prompt the picker
-      await navigator.serial.requestPort();
+  if (authBtn.innerText.includes("Disconnect")) { 
+    await chrome.runtime.sendMessage({ action: 'DISCONNECT' }); 
+    const ports = await navigator.serial.getPorts();
+    if (ports.length > 0) await ports[0].forget(); 
+    location.reload(); 
+  } else { 
+    try {
+      await navigator.serial.requestPort(); 
+      await chrome.runtime.sendMessage({ action: 'CONNECT', baudRate: baudSelect.value });
+    } catch (e) {
+      console.log("User cancelled selection or error:", e);
     }
-    
-    // Reset data viewer state for both actions
-    dataLogEl.value = "";
-    isShowingData = false;
-    toggleDataBtn.innerText = "Show serial data";
-    dataLogEl.style.display = "none";
-    
-    updateUI();
-  } catch (e) {
-    statusEl.className = "error";
-    statusEl.innerText = "Error: " + e.message;
   }
 });
 
-// Run on load
-document.addEventListener('DOMContentLoaded', updateUI);
+toggleDataBtn.addEventListener('click', () => {
+  isShowingData = !isShowingData;
+  dataLogEl.style.display = isShowingData ? 'block' : 'none';
+  toggleDataBtn.innerText = isShowingData ? 'Hide serial data' : 'Show serial data';
+});
+
+baudSelect.addEventListener('change', () => { chrome.storage.local.set({ baudRate: baudSelect.value }); });
+
+cacheSelect.addEventListener('change', () => { 
+  const val = parseInt(cacheSelect.value, 10);
+  chrome.storage.local.set({ cacheDuration: val }); 
+  chrome.tabs.query({}, (tabs) => {
+    for (let tab of tabs) {
+      chrome.tabs.sendMessage(tab.id, { action: 'UPDATE_SETTINGS', data: { cacheDuration: val } }).catch(() => {});
+    }
+  });
+});
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.action === 'NEW_LOCATION') updateLocationUI(msg.data);
+  if (msg.action === 'STATUS_UPDATE') updateUI(msg.state);
+  if (msg.type === 'SERIAL_DATA' && isShowingData) {
+    dataLogEl.value += msg.data;
+    dataLogEl.scrollTop = dataLogEl.scrollHeight;
+  }
+});
+
+chrome.runtime.sendMessage({ action: 'GET_STATUS' }, (res) => {
+  if (res) {
+    updateUI(res.state);
+    if (res.location) updateLocationUI(res.location);
+  }
+});

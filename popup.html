@@ -2,16 +2,44 @@
 <html>
 <head>
   <style>
-    body { width: 250px; font-family: sans-serif; padding: 10px; }
-    #status { font-weight: bold; margin-bottom: 10px; }
-    .error { color: red; }
-    .success { color: green; }
+    body { font-family: sans-serif; width: 340px; padding: 15px; font-size: 14px; margin: 0; }
+    h2 { margin-top: 0; margin-bottom: 15px; font-size: 1.3em; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; color: #333; }
+    .error { color: #d9534f; } .success { color: #5cb85c; }
+    #parsed-data-container { display: none; margin-top: 15px; padding: 12px; background-color: #e8f4f8; border: 1px solid #bce8f1; border-radius: 6px; }
+    #coord-header { font-weight: bold; margin-bottom: 5px; display: block; }
+    #lat-lon { font-family: monospace; font-size: 1.2em; font-weight: bold; }
+    #plus-code { font-family: monospace; font-size: 1.1em; font-weight: bold; color: #444; }
+    button { padding: 8px 12px; cursor: pointer; box-sizing: border-box; }
+    #auth-btn { width: 100%; font-weight: bold; }
+    .copy-btn { padding: 4px 8px; font-size: 0.85em; margin-left: 10px; display: none; vertical-align: middle; }
+    .footer { margin-top: 15px; text-align: center; }
+    .footer a { color: #0056b3; text-decoration: none; font-size: 0.95em; }
+    .footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
-  <h3>GPS Bridge Status</h3>
-  <div id="status">Checking...</div>
-  <a href="options.html" target="_blank">Open Settings</a>
+  <h2>GPS Serial Bridge</h2>
+  
+  <div id="status" style="font-weight: bold; margin-bottom: 15px; text-align: center;"></div>
+  
+  <button id="auth-btn">Connect GPS Device</button>
+  
+  <div id="parsed-data-container">
+    <span id="coord-header">Live GPS coordinates:</span>
+    <div style="margin-bottom: 8px;">
+      <span id="lat-lon">Waiting for fix...</span>
+      <button id="copy-latlon-btn" class="copy-btn">Copy</button>
+    </div>
+    <div>
+      <span id="plus-code"></span>
+      <button id="copy-plus-btn" class="copy-btn">Copy</button>
+    </div>
+  </div>
+  
+  <div class="footer">
+    <a href="options.html" target="_blank">Open Full Settings</a>
+  </div>
+  
   <script src="popup.js"></script>
 </body>
 </html>

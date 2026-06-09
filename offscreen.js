@@ -1,83 +1,137 @@
-let activePort = null;
+let currentPort = null;
 let reader = null;
+let keepReading = false;
+let nmeaBuffer = "";
+let lastLocationCache = null;
 
-async function autoConnect() {
+// Move helper to global scope so it's always accessible
+function toDec(s, d) {
+  const dot = s.indexOf('.');
+  const deg = parseFloat(s.substring(0, dot - 2));
+  const min = parseFloat(s.substring(dot - 2));
+  const val = deg + (min / 60);
+  return (d === 'S' || d === 'W') ? (-val).toFixed(6) : val.toFixed(6);
+}
+
+async function disconnectDevice() {
+  keepReading = false;
+  if (reader) { 
+    try { await reader.cancel(); } catch (e) {} 
+    try { reader.releaseLock(); } catch (e) {}
+    reader = null; 
+  }
+  if (currentPort) { 
+    try { await currentPort.close(); } catch (e) {} 
+    currentPort = null; 
+  }
+}
+
+async function connectToDevice(requestedBaudRate) {
+  await disconnectDevice();
   const ports = await navigator.serial.getPorts();
-  if (ports.length > 0 && !activePort) {
-    connectToPort(ports[0]);
-  }
-}
+  if (ports.length === 0) return { success: false, state: 'DISCONNECTED' };
 
-async function connectToPort(port) {
+  currentPort = ports[0];
+  let finalBaudRate = requestedBaudRate ? parseInt(requestedBaudRate, 10) : 9600;
+
+  // Use optional chaining for storage access
+  if (chrome.storage?.local) {
+    try {
+      const res = await chrome.storage.local.get(['baudRate']);
+      if (res.baudRate) finalBaudRate = parseInt(res.baudRate, 10);
+    } catch (e) {}
+  }
+
   try {
-    activePort = port;
-    await port.open({ baudRate: 9600 });
-    readStream(port);
+    if (!currentPort.opened) {
+      await currentPort.open({ baudRate: finalBaudRate });
+    }
+    keepReading = true;
+    readLoop();
+    return { success: true, state: 'STREAMING' };
   } catch (err) {
-    activePort = null;
-    console.error("Serial connection failed:", err);
+    currentPort = null;
+    return { success: false, state: 'DISCONNECTED' };
   }
 }
 
-async function readStream(port) {
-  const decoder = new TextDecoderStream();
-  const inputDone = port.readable.pipeTo(decoder.writable);
-  reader = decoder.readable.getReader();
-  let buffer = '';
-
+async function readLoop() {
+  if (!currentPort || !currentPort.readable) return;
+  const textDecoder = new TextDecoderStream();
   try {
-    while (true) {
+    currentPort.readable.pipeTo(textDecoder.writable).catch(()=>{});
+    reader = textDecoder.readable.getReader();
+    while (keepReading) {
       const { value, done } = await reader.read();
       if (done) break;
       if (value) {
-        buffer += value;
-        let lines = buffer.split(/\r?\n/);
-        buffer = lines.pop();
+        chrome.runtime.sendMessage({ type: 'SERIAL_DATA', data: value }).catch(() => {});
+        nmeaBuffer += value;
+        const lines = nmeaBuffer.split('\n');
+        nmeaBuffer = lines.pop();
         for (const line of lines) {
-          parseNMEA(line);
+          const cleanLine = line.trim();
+          if (cleanLine.length > 0) parseNMEASentence(cleanLine);
         }
       }
     }
   } catch (err) {
-    console.error("Stream reader error:", err);
+    if (err.name !== 'NetworkError' && err.message !== 'The device has been lost.') console.error("Read loop failure:", err);
   } finally {
-    reader.releaseLock();
-    activePort = null;
+    await disconnectDevice();
+    broadcastState();
   }
 }
 
-function parseNMEA(line) {
-  if (!line.startsWith('$')) return;
-  const parts = line.split(',');
-  const type = parts[0];
-  let lat = null, lng = null;
-
-  if (type.endsWith('RMC') && parts[2] === 'A') {
-    lat = convertToDecimal(parts[3], parts[4]);
-    lng = convertToDecimal(parts[5], parts[6]);
-  } else if (type.endsWith('GGA') && parseInt(parts[6]) > 0) {
-    lat = convertToDecimal(parts[2], parts[3]);
-    lng = convertToDecimal(parts[4], parts[5]);
-  }
-
-  if (lat !== null && lng !== null) {
-    chrome.runtime.sendMessage({
-      type: 'GPS_PARSED',
-      coords: { latitude: lat, longitude: lng, accuracy: 3 }
-    });
+function parseNMEASentence(sentence) {
+  const parts = sentence.split(',');
+  const header = parts[0];
+  if (header.match(/^\$[A-Z]{2}(GGA|RMC)/)) {
+    let latStr, ns, lonStr, ew, hdop;
+    if (header.endsWith('GGA')) { 
+      latStr = parts[2]; ns = parts[3]; lonStr = parts[4]; ew = parts[5]; hdop = parseFloat(parts[8]); 
+    } else if (header.endsWith('RMC')) { 
+      latStr = parts[3]; ns = parts[4]; lonStr = parts[5]; ew = parts[6]; 
+    }
+    
+    if (latStr && lonStr) {
+      lastLocationCache = { lat: toDec(latStr, ns), lon: toDec(lonStr, ew), hdop: hdop, timestamp: Date.now() };
+      chrome.runtime.sendMessage({ action: 'NEW_LOCATION', data: lastLocationCache }).catch(()=>{});
+    }
   }
 }
 
-function convertToDecimal(nmeaVal, direction) {
-  if (!nmeaVal || !direction) return null;
-  const dotIdx = nmeaVal.indexOf('.');
-  if (dotIdx === -1) return null;
-  const degLen = dotIdx - 2;
-  const degrees = parseFloat(nmeaVal.substring(0, degLen));
-  const minutes = parseFloat(nmeaVal.substring(degLen));
-  let decimal = degrees + (minutes / 60);
-  return (direction === 'S' || direction === 'W') ? -decimal : decimal;
+async function broadcastState() {
+  let state = (currentPort && currentPort.readable) ? 'STREAMING' : 'DISCONNECTED';
+  chrome.runtime.sendMessage({ action: 'STATUS_UPDATE', state }).catch(()=>{});
+  return state;
 }
 
-setInterval(autoConnect, 5000); // Poll for connection if not established
-autoConnect();
+navigator.serial.addEventListener('disconnect', async () => { 
+  await disconnectDevice();
+  broadcastState(); 
+});
+
+async function supervisorLoop() {
+  while (true) {
+    await broadcastState();
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.action === 'CONNECT') {
+    connectToDevice(msg.baudRate).then(res => sendResponse(res));
+    return true;
+  }
+  if (msg.action === 'DISCONNECT') {
+    disconnectDevice().then(() => sendResponse({ state: 'DISCONNECTED' }));
+    return true;
+  }
+  if (msg.action === 'GET_STATUS') {
+    broadcastState().then(state => sendResponse({ state, location: lastLocationCache }));
+    return true;
+  }
+});
+
+supervisorLoop();
