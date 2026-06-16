@@ -4,9 +4,20 @@ let keepReading = false;
 let nmeaBuffer = "";
 let lastLocationCache = null;
 
+// Restore the last known fix from persistent storage so popup/options show the
+// correct cached location even after the offscreen document itself was recreated
+// (e.g. a full extension reload), not just after a service worker restart.
+if (chrome.storage?.local) {
+  chrome.storage.local.get(['lastLocation'], (res) => {
+    if (res.lastLocation && !lastLocationCache) lastLocationCache = res.lastLocation;
+  });
+}
+
 // Move helper to global scope so it's always accessible
 function toDec(s, d) {
+  if (!s) return "0.000000";
   const dot = s.indexOf('.');
+  if (dot === -1) return "0.000000";
   const deg = parseFloat(s.substring(0, dot - 2));
   const min = parseFloat(s.substring(dot - 2));
   const val = deg + (min / 60);
@@ -31,7 +42,8 @@ async function connectToDevice(requestedBaudRate) {
   const ports = await navigator.serial.getPorts();
   if (ports.length === 0) return { success: false, state: 'DISCONNECTED' };
 
-  currentPort = ports[0];
+  // Prioritize the most recently granted port instead of always selecting index 0
+  currentPort = ports[ports.length - 1];
   let finalBaudRate = requestedBaudRate ? parseInt(requestedBaudRate, 10) : 9600;
 
   // Use optional chaining for storage access

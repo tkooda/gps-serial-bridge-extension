@@ -87,8 +87,8 @@ authBtn.addEventListener('click', async () => {
   if (authBtn.innerText.includes("Disconnect")) {
     await chrome.runtime.sendMessage({ action: 'DISCONNECT' });
     const ports = await navigator.serial.getPorts();
-    if (ports.length > 0) {
-      try { await ports[0].forget(); } catch(e) {}
+    for (const port of ports) {
+      try { await port.forget(); } catch(e) {}
     }
   } else {
     const ports = await navigator.serial.getPorts();

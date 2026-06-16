@@ -111,7 +111,9 @@ authBtn.addEventListener('click', async () => {
   if (authBtn.innerText.includes("Disconnect")) { 
     await chrome.runtime.sendMessage({ action: 'DISCONNECT' }); 
     const ports = await navigator.serial.getPorts();
-    if (ports.length > 0) await ports[0].forget(); 
+    for (const port of ports) {
+      try { await port.forget(); } catch(e) {}
+    }
     location.reload(); 
   } else { 
     try {
@@ -129,11 +131,11 @@ toggleDataBtn.addEventListener('click', () => {
   toggleDataBtn.innerText = isShowingData ? 'Hide serial data' : 'Show serial data';
 });
 
-baudSelect.addEventListener('change', () => { chrome.storage.local.set({ baudRate: baudSelect.value }); });
+baudSelect.addEventListener('change', () => { chrome.storage.local.set({ baudRate: baudSelect.value }).catch(() => {}); });
 
-cacheSelect.addEventListener('change', () => { 
+cacheSelect.addEventListener('change', () => {
   const val = parseInt(cacheSelect.value, 10);
-  chrome.storage.local.set({ cacheDuration: val }); 
+  chrome.storage.local.set({ cacheDuration: val }).catch(() => {});
   chrome.tabs.query({}, (tabs) => {
     for (let tab of tabs) {
       chrome.tabs.sendMessage(tab.id, { action: 'UPDATE_SETTINGS', data: { cacheDuration: val } }).catch(() => {});
