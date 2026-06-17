@@ -28,6 +28,10 @@ async function setupOffscreen() {
 }
 
 setupOffscreen();
+// Also create the offscreen document as soon as the browser launches, rather than
+// waiting for the first runtime message to wake this service worker - that wait
+// is what let popup/options query GET_STATUS before the offscreen document existed.
+chrome.runtime.onStartup.addListener(setupOffscreen);
 
 // Toolbar icon reflects whether a non-expired cached fix exists, so the user
 // knows at a glance whether they need to connect a GPS dongle or raise the

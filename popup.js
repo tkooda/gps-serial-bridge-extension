@@ -100,7 +100,15 @@ authBtn.addEventListener('click', async () => {
   }
 });
 
+// Read the cached fix straight from storage so it shows up immediately even if the
+// offscreen document hasn't been (re)created yet (e.g. right after a browser restart),
+// instead of depending solely on the GET_STATUS round trip below.
+chrome.storage.local.get(['lastLocation'], (res) => {
+  if (res.lastLocation) updateLocationUI(res.lastLocation);
+});
+
 chrome.runtime.sendMessage({ action: 'GET_STATUS' }, (res) => {
+  if (chrome.runtime.lastError) return;
   if (res) {
     updateUI(res.state);
     if (res.location) updateLocationUI(res.location);

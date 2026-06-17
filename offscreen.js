@@ -7,10 +7,13 @@ let lastLocationCache = null;
 // Restore the last known fix from persistent storage so popup/options show the
 // correct cached location even after the offscreen document itself was recreated
 // (e.g. a full extension reload), not just after a service worker restart.
+// GET_STATUS awaits this promise so it never responds with a stale/empty cache
+// while the read is still in flight (e.g. popup opened right after a browser restart).
+let locationCacheReady = Promise.resolve();
 if (chrome.storage?.local) {
-  chrome.storage.local.get(['lastLocation'], (res) => {
+  locationCacheReady = chrome.storage.local.get(['lastLocation']).then((res) => {
     if (res.lastLocation && !lastLocationCache) lastLocationCache = res.lastLocation;
-  });
+  }).catch(() => {});
 }
 
 // Move helper to global scope so it's always accessible
@@ -141,7 +144,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg.action === 'GET_STATUS') {
-    broadcastState().then(state => sendResponse({ state, location: lastLocationCache }));
+    locationCacheReady
+      .then(() => broadcastState())
+      .then(state => sendResponse({ state, location: lastLocationCache }))
+      .catch(() => sendResponse({ state: 'DISCONNECTED', location: lastLocationCache }));
     return true;
   }
 });
