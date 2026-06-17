@@ -71,8 +71,9 @@ function updateLocationUI(loc) {
   
   plusCodeEl.innerText = encodePlusCode(parseFloat(loc.lat), parseFloat(loc.lon));
   copyPlusBtn.style.display = 'inline-block';
-  
+
   updateAgeTimer();
+  parsedDataContainer.style.display = "block";
 }
 
 function updateUI(state) {

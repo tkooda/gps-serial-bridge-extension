@@ -5,7 +5,8 @@
   "description": "Bridges local hardware serial NMEA data streams directly into the browser Geolocation API.",
   "permissions": [
     "storage",
-    "offscreen"
+    "offscreen",
+    "alarms"
   ],
   "action": {
     "default_popup": "popup.html"
