@@ -49,14 +49,29 @@ chrome.storage.local.get(['baudRate', 'cacheDuration'], (res) => {
   }
 });
 
+function formatDuration(totalSecs) {
+  const days = Math.floor(totalSecs / 86400);
+  const hours = Math.floor((totalSecs % 86400) / 3600);
+  const minutes = Math.floor((totalSecs % 3600) / 60);
+  const seconds = totalSecs % 60;
+
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (days > 0 || hours > 0) parts.push(`${hours}h`);
+  if (days > 0 || hours > 0 || minutes > 0) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+
+  return `${parts.join(', ')} ago`;
+}
+
 function updateAgeTimer() {
   if (!lastLocationData) return;
   const ageSecs = Math.floor((Date.now() - lastLocationData.timestamp) / 1000);
-  
+
   if (currentDeviceState === 'STREAMING' && ageSecs < 4) {
     coordHeader.innerText = "Live GPS coordinates:";
   } else {
-    coordHeader.innerText = `Last known GPS coordinates (${ageSecs} seconds ago):`;
+    coordHeader.innerText = `Last known GPS coordinates (${formatDuration(ageSecs)}):`;
   }
 }
 
